@@ -24,8 +24,6 @@ REGEX=("debian" "ubuntu" "centos|red hat|kernel|oracle linux|alma|rocky" "'amazo
 RELEASE=("Debian" "Ubuntu" "CentOS" "CentOS" "Fedora")
 PACKAGE_UPDATE=("apt-get update" "apt-get update" "yum -y update" "yum -y update" "yum -y update")
 PACKAGE_INSTALL=("apt -y install" "apt -y install" "yum -y install" "yum -y install" "yum -y install")
-PACKAGE_REMOVE=("apt -y remove" "apt -y remove" "yum -y remove" "yum -y remove" "yum -y remove")
-PACKAGE_UNINSTALL=("apt -y autoremove" "apt -y autoremove" "yum -y autoremove" "yum -y autoremove" "yum -y autoremove")
 
 [[ $EUID -ne 0 ]] && red "注意: 请在root用户下运行脚本" && exit 1
 
@@ -63,8 +61,7 @@ inst_cert(){
     if [[ $certInput == 2 ]]; then
         cert_path="/root/cert.crt"
         key_path="/root/private.key"
-
-        chmod a+x /root # 让 Hysteria 主程序访问到 /root 目录
+        chmod a+x /root 
 
         if [[ -f /root/cert.crt && -f /root/private.key ]] && [[ -s /root/cert.crt && -s /root/private.key ]] && [[ -f /root/ca.log ]]; then
             domain=$(cat /root/ca.log)
@@ -119,24 +116,16 @@ inst_cert(){
                 fi
             else
                 red "当前域名解析的IP与当前VPS使用的真实IP不匹配"
-                green "建议如下："
-                yellow "1. 请确保CloudFlare小云朵为关闭状态(仅限DNS), 其他域名解析或CDN网站设置同理"
-                yellow "2. 请检查DNS解析设置的IP是否为VPS的真实IP"
-                yellow "3. 脚本可能跟不上时代, 建议截图发布到GitHub Issues、GitLab Issues、论坛或TG群询问"
                 exit 1
             fi
         fi
     elif [[ $certInput == 3 ]]; then
         read -p "请输入公钥文件 crt 的路径：" cert_path
-        yellow "公钥文件 crt 的路径：$cert_path "
         read -p "请输入密钥文件 key 的路径：" key_path
-        yellow "密钥文件 key 的路径：$key_path "
         read -p "请输入证书的域名：" domain
-        yellow "证书域名：$domain"
         hy_domain=$domain
     else
         green "将使用必应自签证书作为 Hysteria 2 的节点证书"
-
         cert_path="/etc/hysteria/cert.crt"
         key_path="/etc/hysteria/private.key"
         openssl ecparam -genkey -name prime256v1 -out /etc/hysteria/private.key
@@ -150,7 +139,6 @@ inst_cert(){
 
 inst_port(){
     iptables -t nat -F PREROUTING >/dev/null 2>&1
-
     read -p "设置 Hysteria 2 端口 [1-65535]（回车则随机分配端口）：" port
     [[ -z $port ]] && port=$(shuf -i 2000-65535 -n 1)
     until [[ -z $(ss -tunlp | grep -w udp | awk '{print $5}' | sed 's/.*://g' | grep -w "$port") ]]; do
@@ -160,7 +148,6 @@ inst_port(){
             [[ -z $port ]] && port=$(shuf -i 2000-65535 -n 1)
         fi
     done
-
     yellow "将在 Hysteria 2 节点使用的端口是：$port"
     inst_jump
 }
@@ -178,7 +165,7 @@ inst_jump(){
         if [[ $firstport -ge $endport ]]; then
             until [[ $firstport -le $endport ]]; do
                 if [[ $firstport -ge $endport ]]; then
-                    red "你设置的起始端口小于末尾端口，请重新输入起始和末尾端口"
+                    red "你设置的起始端口小于末尾端口，请重新输入"
                     read -p "设置范围端口的起始端口 (建议10000-65535之间)：" firstport
                     read -p "设置一个范围端口的末尾端口 (建议10000-65535之间，一定要比上面起始端口大)：" endport
                 fi
@@ -222,9 +209,8 @@ insthysteria(){
     fi
     ${PACKAGE_INSTALL} curl wget sudo qrencode procps iptables-persistent netfilter-persistent
 
-    # === [注意] 这里移除了自动 BBR 安装代码，现在完全分开 ===
-
-    wget -N https://raw.githubusercontent.com/TsukiLiu/Hysteria2/refs/heads/main/install_server.sh
+    # === [下载链接修复] 移除了 refs/heads/，确保能正确下载 ===
+    wget -N https://raw.githubusercontent.com/TsukiLiu/Hysteria2/main/install_server.sh
     bash install_server.sh
     rm -f install_server.sh
 
@@ -234,30 +220,24 @@ insthysteria(){
         red "Hysteria 2 安装失败！"
     fi
 
-    # 询问用户 Hysteria 配置
     inst_cert
     inst_port
     inst_pwd
     inst_site
 
-    # 设置 Hysteria 配置文件
     cat << EOF > /etc/hysteria/config.yaml
 listen: :$port
-
 tls:
   cert: $cert_path
   key: $key_path
-
 quic:
   initStreamReceiveWindow: 16777216
   maxStreamReceiveWindow: 16777216
   initConnReceiveWindow: 33554432
   maxConnReceiveWindow: 33554432
-
 auth:
   type: password
   password: $auth_pwd
-
 masquerade:
   type: proxy
   proxy:
@@ -265,41 +245,33 @@ masquerade:
     rewriteHost: true
 EOF
 
-    # 确定最终入站端口范围
     if [[ -n $firstport ]]; then
         last_port="$port,$firstport-$endport"
     else
         last_port=$port
     fi
 
-    # 给 IPv6 地址加中括号
     if [[ -n $(echo $ip | grep ":") ]]; then
         last_ip="[$ip]"
     else
         last_ip=$ip
     fi
 
-    mkdir /root/hy
+    mkdir -p /root/hy
     cat << EOF > /root/hy/hy-client.yaml
 server: $last_ip:$last_port
-
 auth: $auth_pwd
-
 tls:
   sni: $hy_domain
   insecure: true
-
 quic:
   initStreamReceiveWindow: 16777216
   maxStreamReceiveWindow: 16777216
   initConnReceiveWindow: 33554432
   maxConnReceiveWindow: 33554432
-
 fastOpen: true
-
 socks5:
   listen: 127.0.0.1:5678
-
 transport:
   udp:
     hopInterval: 30s 
@@ -328,7 +300,6 @@ EOF
   }
 }
 EOF
-
     url="hysteria2://$auth_pwd@$last_ip:$last_port/?insecure=1&sni=$hy_domain#Hysteria2-misaka"
     echo $url > /root/hy/url.txt
 
@@ -338,27 +309,39 @@ EOF
     if [[ -n $(systemctl status hysteria-server 2>/dev/null | grep -w active) && -f '/etc/hysteria/config.yaml' ]]; then
         green "Hysteria 2 服务启动成功"
     else
-        red "Hysteria 2 服务启动失败，请运行 systemctl status hysteria-server 查看服务状态并反馈，脚本退出" && exit 1
+        red "Hysteria 2 服务启动失败，请运行 systemctl status hysteria-server 查看服务状态并反馈" && exit 1
     fi
-    red "======================================================================================"
-    green "Hysteria 2 代理服务安装完成"
-    yellow "Hysteria 2 客户端 YAML 配置文件 hy-client.yaml 内容如下，并保存到 /root/hy/hy-client.yaml"
-    red "$(cat /root/hy/hy-client.yaml)"
-    yellow "Hysteria 2 客户端 JSON 配置文件 hy-client.json 内容如下，并保存到 /root/hy/hy-client.json"
-    red "$(cat /root/hy/hy-client.json)"
-    yellow "Hysteria 2 节点分享链接如下，并保存到 /root/hy/url.txt"
-    red "$(cat /root/hy/url.txt)"
+    showconf
 }
 
-# === [新增] 独立的 BBR 安装函数 ===
+# === BBR 安装与管理 ===
 instbbr(){
-    yellow "正在下载并启动 BBR 安装脚本 (Joey Blog 版)..."
-    # 这里下载你上传到自己仓库的 bbr.sh
-    wget -N --no-check-certificate https://raw.githubusercontent.com/TsukiLiu/Hysteria2/refs/heads/main/bbr.sh
-    chmod +x bbr.sh
-    bash bbr.sh
+    yellow "正在下载并启动 BBR 管理脚本..."
+    # 修正链接：去除 refs/heads/，并重命名为 bbr_install.sh 以免混淆
+    wget -N --no-check-certificate https://raw.githubusercontent.com/TsukiLiu/Hysteria2/main/install.sh -O bbr_install.sh
+    chmod +x bbr_install.sh
+    bash bbr_install.sh
 }
-# =================================
+
+unstbbr(){
+    yellow "正在启动 BBR 管理脚本..."
+    yellow "请在接下来的菜单中选择 [8] 卸载内核，或根据提示操作。"
+    sleep 2
+    instbbr
+}
+
+show_bbr_status(){
+    if [[ $(sysctl net.ipv4.tcp_congestion_control | awk '{print $3}') == "bbr" ]]; then
+        echo -e "BBR 加速状态: ${GREEN}已开启 (Enabled)${PLAIN}"
+    else
+        echo -e "BBR 加速状态: ${RED}未开启 (Disabled)${PLAIN}"
+    fi
+    echo -e "当前 TCP 算法: $(sysctl net.ipv4.tcp_congestion_control | awk '{print $3}')"
+    echo -e "当前队列算法: $(sysctl net.core.default_qdisc | awk '{print $3}')"
+    read -p "按任意键返回菜单..."
+    menu
+}
+# =====================
 
 unsthysteria(){
     systemctl stop hysteria-server.service >/dev/null 2>&1
@@ -367,7 +350,6 @@ unsthysteria(){
     rm -rf /usr/local/bin/hysteria /etc/hysteria /root/hy /root/hysteria.sh
     iptables -t nat -F PREROUTING >/dev/null 2>&1
     netfilter-persistent save >/dev/null 2>&1
-
     green "Hysteria 2 已彻底卸载完成！"
 }
 
@@ -399,43 +381,25 @@ hysteriaswitch(){
 
 changeport(){
     oldport=$(cat /etc/hysteria/config.yaml 2>/dev/null | sed -n 1p | awk '{print $2}' | awk -F ":" '{print $2}')
-    
     read -p "设置 Hysteria 2 端口[1-65535]（回车则随机分配端口）：" port
     [[ -z $port ]] && port=$(shuf -i 2000-65535 -n 1)
-
-    until [[ -z $(ss -tunlp | grep -w udp | awk '{print $5}' | sed 's/.*://g' | grep -w "$port") ]]; do
-        if [[ -n $(ss -tunlp | grep -w udp | awk '{print $5}' | sed 's/.*://g' | grep -w "$port") ]]; then
-            echo -e "${RED} $port ${PLAIN} 端口已经被其他程序占用，请更换端口重试！"
-            read -p "设置 Hysteria 2 端口 [1-65535]（回车则随机分配端口）：" port
-            [[ -z $port ]] && port=$(shuf -i 2000-65535 -n 1)
-        fi
-    done
-
     sed -i "1s#$oldport#$port#g" /etc/hysteria/config.yaml
     sed -i "1s#$oldport#$port#g" /root/hy/hy-client.yaml
     sed -i "2s#$oldport#$port#g" /root/hy/hy-client.json
-
     stophysteria && starthysteria
-
     green "Hysteria 2 端口已成功修改为：$port"
-    yellow "请手动更新客户端配置文件以使用节点"
     showconf
 }
 
 changepasswd(){
     oldpasswd=$(cat /etc/hysteria/config.yaml 2>/dev/null | sed -n 15p | awk '{print $2}')
-
     read -p "设置 Hysteria 2 密码（回车跳过为随机字符）：" passwd
     [[ -z $passwd ]] && passwd=$(date +%s%N | md5sum | cut -c 1-8)
-
     sed -i "1s#$oldpasswd#$passwd#g" /etc/hysteria/config.yaml
     sed -i "1s#$oldpasswd#$passwd#g" /root/hy/hy-client.yaml
     sed -i "3s#$oldpasswd#$passwd#g" /root/hy/hy-client.json
-
     stophysteria && starthysteria
-
     green "Hysteria 2 节点密码已成功修改为：$passwd"
-    yellow "请手动更新客户端配置文件以使用节点"
     showconf
 }
 
@@ -443,30 +407,21 @@ change_cert(){
     old_cert=$(cat /etc/hysteria/config.yaml | grep cert | awk -F " " '{print $2}')
     old_key=$(cat /etc/hysteria/config.yaml | grep key | awk -F " " '{print $2}')
     old_hydomain=$(cat /root/hy/hy-client.yaml | grep sni | awk '{print $2}')
-
     inst_cert
-
     sed -i "s!$old_cert!$cert_path!g" /etc/hysteria/config.yaml
     sed -i "s!$old_key!$key_path!g" /etc/hysteria/config.yaml
     sed -i "6s/$old_hydomain/$hy_domain/g" /root/hy/hy-client.yaml
     sed -i "5s/$old_hydomain/$hy_domain/g" /root/hy/hy-client.json
-
     stophysteria && starthysteria
-
     green "Hysteria 2 节点证书类型已成功修改"
-    yellow "请手动更新客户端配置文件以使用节点"
     showconf
 }
 
 changeproxysite(){
     oldproxysite=$(cat /etc/hysteria/config.yaml | grep url | awk -F " " '{print $2}' | awk -F "https://" '{print $2}')
-    
     inst_site
-
-    sed -i "s#$oldproxysite#$proxysite#g" /etc/caddy/Caddyfile
-
+    sed -i "s#$oldproxysite#$proxysite#g" /etc/hysteria/config.yaml
     stophysteria && starthysteria
-
     green "Hysteria 2 节点伪装网站已成功修改为：$proxysite"
 }
 
@@ -501,7 +456,7 @@ menu() {
     # === 状态检测 ===
     if [[ -f /usr/local/bin/hysteria ]]; then
         if [[ $(systemctl is-active hysteria-server) == "active" ]]; then
-            hy2_status="${GREEN}运行中 (Running)${PLAIN}"
+            hy2_status="${GREEN}已安装 (Installed)${PLAIN}"
         else
             hy2_status="${RED}未运行 (Stopped)${PLAIN}"
         fi
@@ -512,36 +467,39 @@ menu() {
     if [[ $(sysctl net.ipv4.tcp_congestion_control | awk '{print $3}') == "bbr" ]]; then
         bbr_status="${GREEN}已开启 (Enabled)${PLAIN}"
     else
-        bbr_status="${RED}未开启 (Disabled)${PLAIN}"
+        bbr_status="${YELLOW}未开启 (Disabled)${PLAIN}"
     fi
     # ================
 
     echo "#############################################################"
-    echo -e "#                  ${GREEN}Hysteria 2 一键安装脚本${PLAIN}                  #"
+    echo -e "#            ${GREEN}Hysteria 2 + BBR 加速脚本${PLAIN}                    #"
     echo "#############################################################"
     echo -e " Hysteria 2 状态: $hy2_status"
     echo -e " BBR 加速状态   : $bbr_status"
     echo "#############################################################"
     echo ""
-    echo -e " ${GREEN}1.${PLAIN} ${GREEN}安装 Hysteria 2${PLAIN}"
-    echo -e " ${RED}2.${PLAIN} ${RED}卸载 Hysteria 2${PLAIN}"
+    echo -e " ${GREEN}1.${PLAIN} 安装 Hysteria 2"
+    echo -e " ${GREEN}2.${PLAIN} 安装 BBR 加速"
+    echo -e " ${RED}3.${PLAIN} 卸载 Hysteria 2"
+    echo -e " ${RED}4.${PLAIN} 卸载 BBR 加速"
     echo " ------------------------------------------------------------"
-    echo -e " 3. 关闭、开启、重启 Hysteria 2"
-    echo -e " 4. 修改 Hysteria 2 配置"
-    echo -e " 5. 显示 Hysteria 2 配置文件"
-    echo " ------------------------------------------------------------"
-    echo -e " ${GREEN}6.${PLAIN} ${GREEN}安装/管理 BBR 加速 (Joey版)${PLAIN}"
+    echo -e " 5. 关闭、开启、重启 Hysteria 2"
+    echo -e " 6. 修改 Hysteria 2 配置"
+    echo -e " 7. 显示 Hysteria 2 配置文件"
+    echo -e " 8. 显示 BBR 加速状态"
     echo " ------------------------------------------------------------"
     echo -e " 0. 退出脚本"
     echo ""
-    read -rp "请输入选项 [0-6]: " menuInput
+    read -rp "请输入选项 [0-8]: " menuInput
     case $menuInput in
         1 ) insthysteria ;;
-        2 ) unsthysteria ;;
-        3 ) hysteriaswitch ;;
-        4 ) changeconf ;;
-        5 ) showconf ;;
-        6 ) instbbr ;;
+        2 ) instbbr ;;
+        3 ) unsthysteria ;;
+        4 ) unstbbr ;;
+        5 ) hysteriaswitch ;;
+        6 ) changeconf ;;
+        7 ) showconf ;;
+        8 ) show_bbr_status ;;
         * ) exit 1 ;;
     esac
 }
