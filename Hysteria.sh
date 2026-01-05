@@ -40,14 +40,17 @@ generate_cert() {
     chmod 644 $KEY_FILE
 }
 
-# 3. 生成配置文件
+# 3. 生成配置文件 (随机端口)
 generate_config() {
     # 如果配置文件不存在，则生成
     if [ ! -f "$CONFIG_FILE" ]; then
         echo -e "${YELLOW}正在生成配置文件...${PLAIN}"
         PASSWORD=$(date +%s%N | md5sum | head -c 16) # 随机密码
+        # 生成 20000-60000 之间的随机端口
+        RANDOM_PORT=$(($RANDOM % 40000 + 20000))
+        
         cat > $CONFIG_FILE <<EOF
-listen: :443
+listen: :$RANDOM_PORT
 
 tls:
   cert: $CERT_FILE
@@ -74,7 +77,6 @@ EOF
 
 # 4. 创建快捷指令 h2
 create_shortcut() {
-    # 将当前脚本自身复制到 /usr/bin/h2
     cp "$0" /usr/bin/h2
     chmod +x /usr/bin/h2
     echo -e "${GREEN}快捷指令 'h2' 已创建/更新。${PLAIN}"
@@ -105,7 +107,6 @@ uninstall_hy2() {
         systemctl disable hysteria-server
         rm -rf /etc/hysteria
         rm -f /usr/bin/h2
-        # 尝试使用官方卸载方式（如果有），这里直接删除文件
         rm -f /usr/local/bin/hysteria
         echo -e "${GREEN}卸载完成。${PLAIN}"
     else
@@ -117,6 +118,7 @@ uninstall_hy2() {
 show_info() {
     if [ -f "$CONFIG_FILE" ]; then
         IP=$(curl -s4m8 ip.sb)
+        # 自动读取配置文件里的端口
         PORT=$(grep "listen:" $CONFIG_FILE | awk '{print $2}' | sed 's/://')
         PASSWORD=$(grep "password:" $CONFIG_FILE | awk '{print $2}')
         
