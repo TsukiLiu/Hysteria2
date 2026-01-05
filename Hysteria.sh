@@ -191,6 +191,27 @@ inst_site(){
     yellow "使用在 Hysteria 2 节点的伪装网站为：$proxysite"
 }
 
+# === [新增功能] 询问并设置自定义连接域名 ===
+inst_server_addr(){
+    echo ""
+    green "请设置客户端连接使用的地址（用于生成的链接）："
+    echo -e " ${YELLOW}如果您已在 Cloudflare 等平台将域名解析到此 IP，请在此输入域名。${PLAIN}"
+    read -rp "请输入域名（回车不填则默认使用 IP）：" custom_domain
+    if [[ -n $custom_domain ]]; then
+        final_server_addr="$custom_domain"
+        yellow "已设置连接地址为域名：$final_server_addr"
+    else
+        # 默认使用 IP，处理 IPv6
+        if [[ -n $(echo $ip | grep ":") ]]; then
+            final_server_addr="[$ip]"
+        else
+            final_server_addr="$ip"
+        fi
+        yellow "已设置连接地址为 IP：$final_server_addr"
+    fi
+}
+# =========================================
+
 insthysteria(){
     warpv6=$(curl -s6m8 https://www.cloudflare.com/cdn-cgi/trace -k | grep warp | cut -d= -f2)
     warpv4=$(curl -s4m8 https://www.cloudflare.com/cdn-cgi/trace -k | grep warp | cut -d= -f2)
@@ -209,7 +230,6 @@ insthysteria(){
     fi
     ${PACKAGE_INSTALL} curl wget sudo qrencode procps iptables-persistent netfilter-persistent
 
-    # === [下载链接修复] 移除了 refs/heads/，确保能正确下载 ===
     wget -N https://raw.githubusercontent.com/TsukiLiu/Hysteria2/main/install_server.sh
     bash install_server.sh
     rm -f install_server.sh
@@ -224,6 +244,8 @@ insthysteria(){
     inst_port
     inst_pwd
     inst_site
+    # 调用新增的询问域名函数
+    inst_server_addr
 
     cat << EOF > /etc/hysteria/config.yaml
 listen: :$port
@@ -251,15 +273,9 @@ EOF
         last_port=$port
     fi
 
-    if [[ -n $(echo $ip | grep ":") ]]; then
-        last_ip="[$ip]"
-    else
-        last_ip=$ip
-    fi
-
     mkdir -p /root/hy
     cat << EOF > /root/hy/hy-client.yaml
-server: $last_ip:$last_port
+server: $final_server_addr:$last_port
 auth: $auth_pwd
 tls:
   sni: $hy_domain
@@ -278,7 +294,7 @@ transport:
 EOF
     cat << EOF > /root/hy/hy-client.json
 {
-  "server": "$last_ip:$last_port",
+  "server": "$final_server_addr:$last_port",
   "auth": "$auth_pwd",
   "tls": {
     "sni": "$hy_domain",
@@ -300,7 +316,8 @@ EOF
   }
 }
 EOF
-    url="hysteria2://$auth_pwd@$last_ip:$last_port/?insecure=1&sni=$hy_domain#Hysteria2-misaka"
+    # 使用用户设置的 final_server_addr 生成链接
+    url="hysteria2://$auth_pwd@$final_server_addr:$last_port/?insecure=1&sni=$hy_domain#Hysteria2-misaka"
     echo $url > /root/hy/url.txt
 
     systemctl daemon-reload
@@ -317,7 +334,6 @@ EOF
 # === BBR 安装与管理 ===
 instbbr(){
     yellow "正在下载并启动 BBR 管理脚本..."
-    # 修正链接：去除 refs/heads/，并重命名为 bbr_install.sh 以免混淆
     wget -N --no-check-certificate https://raw.githubusercontent.com/TsukiLiu/Hysteria2/main/install.sh -O bbr_install.sh
     chmod +x bbr_install.sh
     bash bbr_install.sh
