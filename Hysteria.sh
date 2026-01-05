@@ -222,14 +222,7 @@ insthysteria(){
     fi
     ${PACKAGE_INSTALL} curl wget sudo qrencode procps iptables-persistent netfilter-persistent
 
-    # === [修改] 自动安装并开启 BBR ===
-    if ! grep -q "net.core.default_qdisc=fq" /etc/sysctl.conf; then
-        echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
-        echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
-        sysctl -p >/dev/null 2>&1
-        green "BBR 加速已自动开启！"
-    fi
-    # ===============================
+    # === [注意] 这里移除了自动 BBR 安装代码，现在完全分开 ===
 
     wget -N https://raw.githubusercontent.com/TsukiLiu/Hysteria2/refs/heads/main/install_server.sh
     bash install_server.sh
@@ -356,6 +349,16 @@ EOF
     yellow "Hysteria 2 节点分享链接如下，并保存到 /root/hy/url.txt"
     red "$(cat /root/hy/url.txt)"
 }
+
+# === [新增] 独立的 BBR 安装函数 ===
+instbbr(){
+    yellow "正在下载并启动 BBR 安装脚本 (Joey Blog 版)..."
+    # 这里下载你上传到自己仓库的 bbr.sh
+    wget -N --no-check-certificate https://raw.githubusercontent.com/TsukiLiu/Hysteria2/refs/heads/main/bbr.sh
+    chmod +x bbr.sh
+    bash bbr.sh
+}
+# =================================
 
 unsthysteria(){
     systemctl stop hysteria-server.service >/dev/null 2>&1
@@ -495,7 +498,7 @@ showconf(){
 
 menu() {
     clear
-    # === [新增] 状态检测逻辑 ===
+    # === 状态检测 ===
     if [[ -f /usr/local/bin/hysteria ]]; then
         if [[ $(systemctl is-active hysteria-server) == "active" ]]; then
             hy2_status="${GREEN}运行中 (Running)${PLAIN}"
@@ -511,7 +514,7 @@ menu() {
     else
         bbr_status="${RED}未开启 (Disabled)${PLAIN}"
     fi
-    # ==========================
+    # ================
 
     echo "#############################################################"
     echo -e "#                  ${GREEN}Hysteria 2 一键安装脚本${PLAIN}                  #"
@@ -527,25 +530,26 @@ menu() {
     echo -e " 4. 修改 Hysteria 2 配置"
     echo -e " 5. 显示 Hysteria 2 配置文件"
     echo " ------------------------------------------------------------"
+    echo -e " ${GREEN}6.${PLAIN} ${GREEN}安装/管理 BBR 加速 (Joey版)${PLAIN}"
+    echo " ------------------------------------------------------------"
     echo -e " 0. 退出脚本"
     echo ""
-    read -rp "请输入选项 [0-5]: " menuInput
+    read -rp "请输入选项 [0-6]: " menuInput
     case $menuInput in
         1 ) insthysteria ;;
         2 ) unsthysteria ;;
         3 ) hysteriaswitch ;;
         4 ) changeconf ;;
         5 ) showconf ;;
+        6 ) instbbr ;;
         * ) exit 1 ;;
     esac
 }
 
-# === 这一段是增加 h2 快捷指令的代码 ===
 if [[ ! -f /usr/bin/h2 ]]; then
     cp "$0" /usr/bin/h2
     chmod +x /usr/bin/h2
     echo -e "${GREEN}快捷指令 'h2' 已创建，以后输入 h2 即可打开菜单${PLAIN}"
 fi
-# ===================================
 
 menu
