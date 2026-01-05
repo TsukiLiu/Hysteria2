@@ -276,13 +276,13 @@ print_separator() {
 
 clear
 print_separator
-echo -e "\033[1;35mBBR 加速管理脚本\033[0m"
+echo -e "\033[1;35m                 BBR 加速管理脚本\033[0m"
 print_separator
 echo -e "\033[36m当前 TCP 拥塞控制算法：\033[0m\033[1;32m$CURRENT_ALGO\033[0m"
 echo -e "\033[36m当前队列管理算法：    \033[0m\033[1;32m$CURRENT_QDISC\033[0m"
 print_separator
 
-echo -e "\033[1;33m╭( ･ㅂ･)و ✧ 你可以选择以下操作哦：\033[0m"
+echo -e "\033[1;33m你可以选择以下操作哦：\033[0m"
 echo -e "\033[33m 1. ⚡ 安装或更新 BBR v3 (最新版)\033[0m"
 echo -e "\033[33m 2. ⚡ 指定版本安装\033[0m"
 echo -e "\033[33m 3. ⚡ 检查 BBR v3 状态\033[0m"
@@ -290,7 +290,7 @@ echo -e "\033[33m 4. ⚡ 启用 BBR + FQ\033[0m"
 echo -e "\033[33m 5. ⚡ 启用 BBR + FQ_CODEL\033[0m"
 echo -e "\033[33m 6. ⚡ 启用 BBR + FQ_PIE\033[0m"
 echo -e "\033[33m 7. ⚡ 启用 BBR + CAKE\033[0m"
-echo -e "\033[33m 8. ⚡  卸载 BBR 内核\033[0m"
+echo -e "\033[33m 8. ⚡ 卸载 BBR 内核\033[0m"
 print_separator
 echo -n -e "\033[36m请选择一个操作 (1-8) (｡･ω･｡): \033[0m"
 read -r ACTION
